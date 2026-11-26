@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Toronto Drive</title>
+<title>City Drive</title>
 <style>
   body { margin:0; overflow:hidden; background:#0a0f1a; font-family:monospace; }
   canvas { display:block; }
@@ -15,7 +15,7 @@
 </style>
 </head>
 <body>
-<div id="loading">Loading City... (5.3MB, almost there!)</div>
+<div id="loading">Loading City... (Almost there!)</div>
 <div id="hud">Speed: <span id="speed">0</span> km/h</div>
 <div id="camLabel">Camera: Chase</div>
 <div id="help">
@@ -114,7 +114,7 @@ loader.load('models/car.glb', (gltf) => {
   model.position.sub(box2.getCenter(new THREE.Vector3()));
   model.position.y += (box2.max.y - box2.min.y) * 0.5;
   
-  // If your Mercedes faces backward, change this to Math.PI
+  // If your car faces backward, change to Math.PI
   model.rotation.y = 0; 
   
   model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
@@ -122,8 +122,8 @@ loader.load('models/car.glb', (gltf) => {
   car.add(model);
 }, undefined, () => console.warn('Car fallback used.'));
 
-// Load City
-loader.load('models/city.glb', (gltf) => {
+// Load City (Changed to building.glb)
+loader.load('models/building.glb', (gltf) => {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('start').style.display = 'flex';
   
@@ -144,7 +144,7 @@ loader.load('models/city.glb', (gltf) => {
   city.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
   scene.add(city);
 
-  // Generate collision grid for the larger city
+  // Generate collision grid
   for (let i = 0; i < 30; i++) {
     for (let j = 0; j < 30; j++) {
       const x = -750 + (i * 50) + 25;
@@ -155,13 +155,12 @@ loader.load('models/city.glb', (gltf) => {
   }
 }, undefined, (err) => {
   console.error('GLTF Error:', err);
-  document.getElementById('loading').textContent = 'Failed to load city.glb. Check console.';
+  document.getElementById('loading').textContent = 'Failed to load building.glb. Check console.';
 });
 
 // ============================================================
 // PHYSICS + COLLISION
 // ============================================================
-// Spawn at Y=50 so we drop onto the road
 const state = { x:0, y:50, z:0, heading:0, speed:0, steer:0 };
 const MAX_SPEED = 42, MAX_REV = -10;
 const ACCEL = 15, BRAKE = 28, FRICTION = 3.5;
@@ -260,7 +259,7 @@ function updateAudio() {
 }
 
 // ============================================================
-// MAIN LOOP (WITH GRAVITY / DROPPING)
+// MAIN LOOP
 // ============================================================
 const speedEl = document.getElementById('speed');
 const clock = new THREE.Clock();
@@ -297,9 +296,8 @@ function updateCar(dt) {
   state.x += Math.sin(state.heading) * state.speed * dt;
   state.z += Math.cos(state.heading) * state.speed * dt;
 
-  // Gravity / Falling to ground
   if (state.y > 0) {
-    state.y -= 30 * dt; // fall speed
+    state.y -= 30 * dt;
     if (state.y < 0) state.y = 0;
   }
 
