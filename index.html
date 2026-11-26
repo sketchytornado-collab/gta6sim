@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>City Drive</title>
+<title>City Drive — GitHub Edition</title>
 <style>
   body { margin:0; overflow:hidden; background:#0a0f1a; font-family:monospace; }
   canvas { display:block; }
   #hud { position:fixed; bottom:20px; left:20px; color:#fff; font-size:15px; background:rgba(0,0,0,.55); padding:10px 14px; border-radius:8px; pointer-events:none; backdrop-filter:blur(6px); }
   #help { position:fixed; top:20px; left:20px; color:#fff; font-size:12px; background:rgba(0,0,0,.55); padding:10px 14px; border-radius:8px; pointer-events:none; line-height:1.6; backdrop-filter:blur(6px); }
   #camLabel { position:fixed; top:20px; right:20px; color:#fff; font-size:13px; background:rgba(0,0,0,.55); padding:8px 12px; border-radius:8px; pointer-events:none; backdrop-filter:blur(6px); }
-  #start { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.82); color:#fff; font-size:20px; cursor:pointer; text-align:center; padding:20px; }
+  #loading { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#0a0f1a; color:#fff; font-size:18px; z-index:10; }
+  #start { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.82); color:#fff; font-size:20px; cursor:pointer; text-align:center; padding:20px; z-index:20; display:none; }
   #start small { display:block; font-size:12px; opacity:.7; margin-top:8px; }
 </style>
 </head>
 <body>
+<div id="loading">Loading City from GitHub... (15MB, please wait)</div>
 <div id="hud">Speed: <span id="speed">0</span> km/h</div>
 <div id="camLabel">Camera: Chase</div>
 <div id="help">
@@ -36,13 +38,14 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { USDZLoader } from 'three/addons/loaders/USDZLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 // ============================================================
-// RENDERER + POST-PROCESSING
+// RENDERER + POST
 // ============================================================
 const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
@@ -56,149 +59,118 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8eb8d8);
-scene.fog = new THREE.Fog(0x8eb8d8, 120, 500);
+scene.fog = new THREE.Fog(0x8eb8d8, 150, 600);
 
 const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.1, 2000);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.4, 0.85));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.4, 0.85));
 composer.addPass(new OutputPass());
 
+// Lights
 scene.add(new THREE.HemisphereLight(0xa8c8e8, 0x3a2f28, 1.2));
 const sun = new THREE.DirectionalLight(0xffe4b0, 2.5);
 sun.position.set(120, 160, 80);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0005;
-Object.assign(sun.shadow.camera, { left:-200, right:200, top:200, bottom:-200, far:600 });
+Object.assign(sun.shadow.camera, { left:-250, right:250, top:250, bottom:-250, far:800 });
 scene.add(sun);
 
 // ============================================================
-// CITY: GROUND + ROADS (procedural)
+// GROUND + COLLIDERS
 // ============================================================
-const GRID = 5, BLOCK = 44, ROAD_W = 14;
-const CELL = BLOCK + ROAD_W, HALF = GRID * CELL / 2;
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(3000, 3000),
+  new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1 })
+);
+ground.rotation.x = -Math.PI/2;
+ground.position.y = -0.1;
+ground.receiveShadow = true;
+scene.add(ground);
 
-{
-  const g = new THREE.Mesh(new THREE.PlaneGeometry(2400,2400),
-    new THREE.MeshStandardMaterial({ color:0x2d3a2a, roughness:1 }));
-  g.rotation.x = -Math.PI/2; g.position.y = -0.02; g.receiveShadow = true; scene.add(g);
-}
-
-const asphalt = new THREE.MeshStandardMaterial({ color:0x262626, roughness:0.92 });
-const lineMat = new THREE.MeshStandardMaterial({ color:0xf0f0f0 });
-
-for (let i = 0; i <= GRID; i++) {
-  const p = i * CELL - HALF;
-  const rh = new THREE.Mesh(new THREE.PlaneGeometry(HALF*2, ROAD_W), asphalt);
-  rh.rotation.x = -Math.PI/2; rh.position.set(0, 0.001, p); rh.receiveShadow = true; scene.add(rh);
-  const rv = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, HALF*2), asphalt);
-  rv.rotation.x = -Math.PI/2; rv.position.set(p, 0.001, 0); rv.receiveShadow = true; scene.add(rv);
-  for (let t = -HALF+6; t < HALF; t += 10) {
-    const dh = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.32), lineMat);
-    dh.rotation.x = -Math.PI/2; dh.position.set(t, 0.02, p); scene.add(dh);
-    const dv = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 4), lineMat);
-    dv.rotation.x = -Math.PI/2; dv.position.set(p, 0.02, t); scene.add(dv);
-  }
-}
-
-// ============================================================
-// MODEL LOADING
-// ============================================================
-const loader = new GLTFLoader();
 const colliders = [];
 
-// --- CAR ---
-// Fallback car: box, facing +Z
+// ============================================================
+// LOAD CAR
+// ============================================================
+const gltfLoader = new GLTFLoader();
 const fallbackCar = new THREE.Group();
 {
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 0.7, 4),
-    new THREE.MeshStandardMaterial({ color:0xcc2222, metalness:0.6, roughness:0.3 })
-  );
-  body.position.y = 0.6; body.castShadow = true;
-  fallbackCar.add(body);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 4),
+    new THREE.MeshStandardMaterial({ color:0xcc2222, metalness:0.6, roughness:0.3 }));
+  body.position.y = 0.6; body.castShadow = true; fallbackCar.add(body);
 }
 const car = fallbackCar;
 scene.add(car);
 
-loader.load('models/car.glb', (gltf) => {
+gltfLoader.load('models/car.glb', (gltf) => {
   const model = gltf.scene;
-
-  // Auto-scale to ~4.5 units long
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
-  const scale = 4.5 / Math.max(size.x, size.z);
-  model.scale.setScalar(scale);
-
-  // Recompute after scaling, center on origin, rest on ground
+  model.scale.setScalar(4.5 / Math.max(size.x, size.z));
   const box2 = new THREE.Box3().setFromObject(model);
-  const center = box2.getCenter(new THREE.Vector3());
-  model.position.sub(center);
+  model.position.sub(box2.getCenter(new THREE.Vector3()));
   model.position.y += (box2.max.y - box2.min.y) * 0.5;
-
-  // *** IMPORTANT: rotate model so its nose points +Z ***
-  // Most GLB car models are authored facing +Z or -Z. If yours faces a
-  // different axis, change this rotation. Try Math.PI if it faces backward.
-  model.rotation.y = 0;
-
+  model.rotation.y = 0; // If car faces backward, change to Math.PI
   model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-
   car.clear();
   car.add(model);
-}, undefined, err => console.warn('Car model failed to load, using fallback.', err));
+}, undefined, () => console.warn('Car fallback used.'));
 
-// --- BUILDING ---
-// Fallback buildings: boxes
-function spawnFallbackBuildings() {
-  for (let ix = 0; ix < GRID; ix++) {
-    for (let iz = 0; iz < GRID; iz++) {
-      const cx = ix * CELL - HALF + ROAD_W/2 + BLOCK/2;
-      const cz = iz * CELL - HALF + ROAD_W/2 + BLOCK/2;
-      if (Math.abs(cx) < 20 && Math.abs(cz) < 20) continue;
-      const h = 15 + Math.random() * 30;
-      const b = new THREE.Mesh(new THREE.BoxGeometry(28, h, 28),
-        new THREE.MeshStandardMaterial({ color:0x8899aa, roughness:0.8 }));
-      b.position.set(cx, h/2, cz);
-      b.castShadow = true; b.receiveShadow = true;
-      scene.add(b);
-      colliders.push({ minX: cx-14, maxX: cx+14, minZ: cz-14, maxZ: cz+14 });
+// ============================================================
+// LOAD CITY (USDZ from local GitHub folder)
+// ============================================================
+const usdzLoader = new USDZLoader();
+
+usdzLoader.load('models/city.usdz', (model) => {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('start').style.display = 'flex';
+
+  // Center and scale
+  const box = new THREE.Box3().setFromObject(model);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.z);
+  const scale = 800 / maxDim; // City is 800 units wide
+  model.scale.setScalar(scale);
+
+  model.position.x = -center.x * scale;
+  model.position.z = -center.z * scale;
+  model.position.y = -box.min.y * scale;
+
+  model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+  scene.add(model);
+
+  // --- COLLISION GRID ---
+  // Since USDZ doesn't give us building positions easily, we generate
+  // a grid of invisible boxes across the city. You will bounce off them.
+  const cityRadius = 400;
+  const steps = 20;
+  const stepSize = (cityRadius * 2) / steps;
+
+  for (let i = 0; i < steps; i++) {
+    for (let j = 0; j < steps; j++) {
+      const x = -cityRadius + (i * stepSize) + (stepSize / 2);
+      const z = -cityRadius + (j * stepSize) + (stepSize / 2);
+      
+      // Leave center empty for spawn
+      if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
+
+      colliders.push({
+        minX: x - stepSize * 0.4, maxX: x + stepSize * 0.4,
+        minZ: z - stepSize * 0.4, maxZ: z + stepSize * 0.4
+      });
     }
   }
-}
-
-loader.load('models/building.glb', (gltf) => {
-  const proto = gltf.scene;
-  proto.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-
-  // Pre-scale the prototype once, so all clones use the same scale
-  const bbox = new THREE.Box3().setFromObject(proto);
-  const bs = bbox.getSize(new THREE.Vector3());
-  const protoScale = 28 / Math.max(bs.x, bs.z);
-
-  for (let ix = 0; ix < GRID; ix++) {
-    for (let iz = 0; iz < GRID; iz++) {
-      const cx = ix * CELL - HALF + ROAD_W/2 + BLOCK/2;
-      const cz = iz * CELL - HALF + ROAD_W/2 + BLOCK/2;
-      if (Math.abs(cx) < 20 && Math.abs(cz) < 20) continue;
-
-      const b = proto.clone(true);
-      b.scale.setScalar(protoScale);
-      b.position.set(cx, 0, cz);
-      b.rotation.y = Math.random() * Math.PI * 2;
-      scene.add(b);
-
-      colliders.push({ minX: cx-14, maxX: cx+14, minZ: cz-14, maxZ: cz+14 });
-    }
-  }
-}, undefined, err => {
-  console.warn('Building model failed to load, using fallback boxes.', err);
-  spawnFallbackBuildings();
+}, undefined, (err) => {
+  console.error('USDZ Load Error:', err);
+  document.getElementById('loading').textContent = 'Failed to load models/city.usdz. Check console.';
 });
 
 // ============================================================
-// PHYSICS STATE
+// PHYSICS + COLLISION
 // ============================================================
 const state = { x:0, z:0, heading:0, speed:0, steer:0 };
 const MAX_SPEED = 42, MAX_REV = -10;
@@ -215,7 +187,7 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
-function resolveBuildingCollisions() {
+function resolveCollisions() {
   for (const b of colliders) {
     const nx = Math.max(b.minX, Math.min(state.x, b.maxX));
     const nz = Math.max(b.minZ, Math.min(state.z, b.maxZ));
@@ -225,47 +197,8 @@ function resolveBuildingCollisions() {
       const d = Math.sqrt(d2) || 0.0001;
       state.x += (dx/d) * (CAR_RADIUS - d);
       state.z += (dz/d) * (CAR_RADIUS - d);
-      state.speed *= -0.3;
+      state.speed *= -0.3; // Bounce back
     }
-  }
-}
-
-// ============================================================
-// AI TRAFFIC
-// ============================================================
-const aiCars = [];
-const AI_SPEED = 11, AI_LANE = 3.0;
-
-for (let i = 0; i < 12; i++) {
-  const onX = Math.random() < 0.5;
-  const roadIdx = Math.floor(Math.random() * (GRID+1));
-  const roadPos = roadIdx * CELL - HALF;
-  const along = (Math.random()-0.5) * (HALF*2 - 20);
-  let x, z, heading;
-  if (onX) {
-    x = along; z = roadPos; heading = Math.random() < 0.5 ? Math.PI/2 : -Math.PI/2;
-    z += heading > 0 ? AI_LANE : -AI_LANE;
-  } else {
-    x = roadPos; z = along; heading = Math.random() < 0.5 ? 0 : Math.PI;
-    x += heading > 0 ? -AI_LANE : AI_LANE;
-  }
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8,0.6,3.8),
-    new THREE.MeshStandardMaterial({ color:[0x3366cc,0xddaa22,0x33aa55][i%3], metalness:0.6, roughness:0.4 }));
-  body.position.y = 0.6; body.castShadow = true; g.add(body);
-  g.position.set(x, 0, z); g.rotation.y = heading;
-  scene.add(g);
-  aiCars.push({ mesh: g, x, z, heading, speed: AI_SPEED * (0.7 + Math.random()*0.5) });
-}
-
-function updateAI(dt) {
-  for (const a of aiCars) {
-    const nx = a.x + Math.sin(a.heading) * a.speed * dt;
-    const nz = a.z + Math.cos(a.heading) * a.speed * dt;
-    if (Math.abs(nx) > HALF || Math.abs(nz) > HALF) a.heading += Math.PI;
-    else { a.x = nx; a.z = nz; }
-    a.mesh.position.set(a.x, 0, a.z);
-    a.mesh.rotation.y = a.heading;
   }
 }
 
@@ -374,7 +307,7 @@ function updateCar(dt) {
   state.x += Math.sin(state.heading) * state.speed * dt;
   state.z += Math.cos(state.heading) * state.speed * dt;
 
-  resolveBuildingCollisions();
+  resolveCollisions();
 
   car.position.set(state.x, 0, state.z);
   car.rotation.y = state.heading;
@@ -386,7 +319,6 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   updateCar(dt);
-  updateAI(dt);
   updateCamera(dt);
   updateAudio();
   composer.render();
