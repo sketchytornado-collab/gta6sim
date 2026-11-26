@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>City Drive — GitHub Edition</title>
+<title>Toronto Drive</title>
 <style>
   body { margin:0; overflow:hidden; background:#0a0f1a; font-family:monospace; }
   canvas { display:block; }
@@ -15,7 +15,7 @@
 </style>
 </head>
 <body>
-<div id="loading">Loading City from GitHub... (15MB, please wait)</div>
+<div id="loading">Loading City... (5.3MB, almost there!)</div>
 <div id="hud">Speed: <span id="speed">0</span> km/h</div>
 <div id="camLabel">Camera: Chase</div>
 <div id="help">
@@ -38,14 +38,13 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { USDZLoader } from 'three/addons/loaders/USDZLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 // ============================================================
-// RENDERER + POST
+// RENDERER + POST-PROCESSING
 // ============================================================
 const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
@@ -59,9 +58,9 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8eb8d8);
-scene.fog = new THREE.Fog(0x8eb8d8, 150, 600);
+scene.fog = new THREE.Fog(0x8eb8d8, 200, 1000); 
 
-const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.1, 2000);
+const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.1, 4000);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -75,14 +74,14 @@ sun.position.set(120, 160, 80);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0005;
-Object.assign(sun.shadow.camera, { left:-250, right:250, top:250, bottom:-250, far:800 });
+Object.assign(sun.shadow.camera, { left:-400, right:400, top:400, bottom:-400, far:1500 });
 scene.add(sun);
 
 // ============================================================
 // GROUND + COLLIDERS
 // ============================================================
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(3000, 3000),
+  new THREE.PlaneGeometry(5000, 5000),
   new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 1 })
 );
 ground.rotation.x = -Math.PI/2;
@@ -93,9 +92,9 @@ scene.add(ground);
 const colliders = [];
 
 // ============================================================
-// LOAD CAR
+// LOAD MODELS
 // ============================================================
-const gltfLoader = new GLTFLoader();
+const loader = new GLTFLoader();
 const fallbackCar = new THREE.Group();
 {
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 4),
@@ -105,7 +104,8 @@ const fallbackCar = new THREE.Group();
 const car = fallbackCar;
 scene.add(car);
 
-gltfLoader.load('models/car.glb', (gltf) => {
+// Load Car
+loader.load('models/car.glb', (gltf) => {
   const model = gltf.scene;
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
@@ -113,66 +113,56 @@ gltfLoader.load('models/car.glb', (gltf) => {
   const box2 = new THREE.Box3().setFromObject(model);
   model.position.sub(box2.getCenter(new THREE.Vector3()));
   model.position.y += (box2.max.y - box2.min.y) * 0.5;
-  model.rotation.y = 0; // If car faces backward, change to Math.PI
+  
+  // If your Mercedes faces backward, change this to Math.PI
+  model.rotation.y = 0; 
+  
   model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
   car.clear();
   car.add(model);
 }, undefined, () => console.warn('Car fallback used.'));
 
-// ============================================================
-// LOAD CITY (USDZ from local GitHub folder)
-// ============================================================
-const usdzLoader = new USDZLoader();
-
-usdzLoader.load('models/city.usdz', (model) => {
+// Load City
+loader.load('models/city.glb', (gltf) => {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('start').style.display = 'flex';
-
-  // Center and scale
-  const box = new THREE.Box3().setFromObject(model);
-  const center = box.getCenter(new THREE.Vector3());
+  
+  const city = gltf.scene;
+  
+  // Scale city to 1500 units wide
+  const box = new THREE.Box3().setFromObject(city);
   const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.z);
-  const scale = 800 / maxDim; // City is 800 units wide
-  model.scale.setScalar(scale);
+  city.scale.setScalar(1500 / Math.max(size.x, size.z));
+  
+  // Center city and put it on the ground
+  const box2 = new THREE.Box3().setFromObject(city);
+  const center = box2.getCenter(new THREE.Vector3());
+  city.position.x = -center.x;
+  city.position.z = -center.z;
+  city.position.y = -box2.min.y;
 
-  model.position.x = -center.x * scale;
-  model.position.z = -center.z * scale;
-  model.position.y = -box.min.y * scale;
+  city.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+  scene.add(city);
 
-  model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-  scene.add(model);
-
-  // --- COLLISION GRID ---
-  // Since USDZ doesn't give us building positions easily, we generate
-  // a grid of invisible boxes across the city. You will bounce off them.
-  const cityRadius = 400;
-  const steps = 20;
-  const stepSize = (cityRadius * 2) / steps;
-
-  for (let i = 0; i < steps; i++) {
-    for (let j = 0; j < steps; j++) {
-      const x = -cityRadius + (i * stepSize) + (stepSize / 2);
-      const z = -cityRadius + (j * stepSize) + (stepSize / 2);
-      
-      // Leave center empty for spawn
-      if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
-
-      colliders.push({
-        minX: x - stepSize * 0.4, maxX: x + stepSize * 0.4,
-        minZ: z - stepSize * 0.4, maxZ: z + stepSize * 0.4
-      });
+  // Generate collision grid for the larger city
+  for (let i = 0; i < 30; i++) {
+    for (let j = 0; j < 30; j++) {
+      const x = -750 + (i * 50) + 25;
+      const z = -750 + (j * 50) + 25;
+      if (Math.abs(x) < 30 && Math.abs(z) < 30) continue;
+      colliders.push({ minX: x-20, maxX: x+20, minZ: z-20, maxZ: z+20 });
     }
   }
 }, undefined, (err) => {
-  console.error('USDZ Load Error:', err);
-  document.getElementById('loading').textContent = 'Failed to load models/city.usdz. Check console.';
+  console.error('GLTF Error:', err);
+  document.getElementById('loading').textContent = 'Failed to load city.glb. Check console.';
 });
 
 // ============================================================
 // PHYSICS + COLLISION
 // ============================================================
-const state = { x:0, z:0, heading:0, speed:0, steer:0 };
+// Spawn at Y=50 so we drop onto the road
+const state = { x:0, y:50, z:0, heading:0, speed:0, steer:0 };
 const MAX_SPEED = 42, MAX_REV = -10;
 const ACCEL = 15, BRAKE = 28, FRICTION = 3.5;
 const STEER_RATE = 4.0, MAX_STEER = 0.6;
@@ -183,7 +173,7 @@ const keys = {};
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'KeyC') cycleCam();
-  if (e.code === 'KeyR') { state.x=0; state.z=0; state.heading=0; state.speed=0; state.steer=0; }
+  if (e.code === 'KeyR') { state.x=0; state.y=50; state.z=0; state.heading=0; state.speed=0; state.steer=0; }
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -197,7 +187,7 @@ function resolveCollisions() {
       const d = Math.sqrt(d2) || 0.0001;
       state.x += (dx/d) * (CAR_RADIUS - d);
       state.z += (dz/d) * (CAR_RADIUS - d);
-      state.speed *= -0.3; // Bounce back
+      state.speed *= -0.3;
     }
   }
 }
@@ -224,10 +214,10 @@ function updateCamera(dt) {
   if (camMode === 0) {
     const back = 9 + speedNorm * 3;
     const up = 4.2 + speedNorm * 0.8;
-    const desired = new THREE.Vector3(state.x - sin*back, up, state.z - cos*back);
+    const desired = new THREE.Vector3(state.x - sin*back, state.y + up, state.z - cos*back);
     const k = 1 - Math.pow(0.0008, dt);
     chasePos.lerp(desired, k);
-    chaseLook.lerp(new THREE.Vector3(state.x + sin*5, 1.2, state.z + cos*5), k);
+    chaseLook.lerp(new THREE.Vector3(state.x + sin*5, state.y + 1.2, state.z + cos*5), k);
     camera.position.copy(chasePos);
     camera.lookAt(chaseLook);
     camera.fov = 68 + speedNorm * 10;
@@ -238,8 +228,8 @@ function updateCamera(dt) {
       : new THREE.Vector3(0.32, 1.12, -0.15);
     const wx = state.x + off.x*cos + off.z*sin;
     const wz = state.z - off.x*sin + off.z*cos;
-    camera.position.set(wx, off.y, wz);
-    camera.lookAt(new THREE.Vector3(state.x + sin*20, off.y - 0.15, state.z + cos*20));
+    camera.position.set(wx, state.y + off.y, wz);
+    camera.lookAt(new THREE.Vector3(state.x + sin*20, state.y + off.y - 0.15, state.z + cos*20));
     camera.fov = (camMode === 1 ? 72 : 78) + speedNorm * 8;
     camera.updateProjectionMatrix();
   }
@@ -270,7 +260,7 @@ function updateAudio() {
 }
 
 // ============================================================
-// MAIN LOOP
+// MAIN LOOP (WITH GRAVITY / DROPPING)
 // ============================================================
 const speedEl = document.getElementById('speed');
 const clock = new THREE.Clock();
@@ -307,9 +297,15 @@ function updateCar(dt) {
   state.x += Math.sin(state.heading) * state.speed * dt;
   state.z += Math.cos(state.heading) * state.speed * dt;
 
+  // Gravity / Falling to ground
+  if (state.y > 0) {
+    state.y -= 30 * dt; // fall speed
+    if (state.y < 0) state.y = 0;
+  }
+
   resolveCollisions();
 
-  car.position.set(state.x, 0, state.z);
+  car.position.set(state.x, state.y, state.z);
   car.rotation.y = state.heading;
 
   speedEl.textContent = Math.round(Math.abs(state.speed) * 3.6);
