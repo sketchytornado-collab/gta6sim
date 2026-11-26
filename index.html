@@ -122,8 +122,8 @@ loader.load('models/car.glb', (gltf) => {
   car.add(model);
 }, undefined, () => console.warn('Car fallback used.'));
 
-// Load City (Changed to building.glb)
-loader.load('models/building.glb', (gltf) => {
+// Load City (Changed back to city.glb)
+loader.load('models/city.glb', (gltf) => {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('start').style.display = 'flex';
   
@@ -155,7 +155,7 @@ loader.load('models/building.glb', (gltf) => {
   }
 }, undefined, (err) => {
   console.error('GLTF Error:', err);
-  document.getElementById('loading').textContent = 'Failed to load building.glb. Check console.';
+  document.getElementById('loading').textContent = 'Failed to load city.glb. Check console.';
 });
 
 // ============================================================
